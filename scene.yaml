@@ -1,0 +1,612 @@
+# Author: Geraldine Sarmiento
+
+# Tangram Blocks
+# https://tangrams.github.io/blocks/
+# Patricio Gonzalez Vivo
+
+cameras:
+    camera1:
+        type: perspective
+
+global:
+    # default order for basemap features
+    feature_order: function() { return feature.sort_rank; }
+    feature_order_down_1: function() { return feature.sort_rank - 1; }
+    building_extrude_height: |
+        function () { return feature.height > 16 || $zoom >= 16; }
+
+    # Sign up for a Mapzen API key to enjoy higher rate limits
+    # https://mapzen.com/documentation/overview/#developer-accounts-and-api-keys
+    sdk_api_key: '3eqm2_bfTNGZ85ar20fVyA'     # set this value to your Mapzen API key
+
+
+scene:
+    background:
+        color: [1.000,1.000,1.000]
+
+sources:
+    # mapzen:
+    #     type: MVT
+    #     # url:  https://tile.nextzen.org/tilezen/vector/v1/512/all/{z}/{x}/{y}.mvt
+    #     url: https://xyz.api.here.com/tiles/osmbase/512/all/{z}/{x}/{y}.mvt
+    #     url_params:
+    #         api_key: JJiaZE63TZObzPrmx0TQkw
+    #     tile_size: 512
+    #     max_zoom: 16
+
+    nextzen:
+        type: MVT
+        url: https://tile.nextzen.org/tilezen/vector/v1/512/all/{z}/{x}/{y}.mvt
+        url_params:
+            api_key: global.sdk_api_key
+        rasters: [normals-elevation]
+        tile_size: 512
+        max_zoom: 15
+    normals-elevation:
+        type: Raster
+        url: https://tile.nextzen.org/tilezen/terrain/v1/512/normal/{z}/{x}/{y}.png
+        url_params:
+            api_key: global.sdk_api_key
+        tile_size: 512
+        max_zoom: 14
+
+    xyz-osm:
+        type: MVT
+        url: https://xyz.api.here.com/tiles/osmbase/256/all/{z}/{x}/{y}.mvt
+
+layers:
+    earth:
+        data: { source: nextzen, layer: earth }
+        draw:
+            polygons:
+                style: terrain
+                order: global.feature_order
+                color: [1.000,1.000,1.000]
+
+    water:
+        data: { source: nextzen, layer: water }
+        draw:
+            polygons:
+                order: global.feature_order
+                color: [0.950,0.950,0.950]
+
+        lakes:
+            filter:
+                all:
+                    - kind: [ocean, lake, water, riverbank, reservoir, swimming_pool]
+            draw:
+                polygons:
+                    color: [0.950,0.950,0.950]
+
+        other-water-areas:
+            filter: { not: { kind: [ocean, lake, water, reservoir] }, $zoom: { min: 11 }, area: { min: 100 } }
+            draw:
+                polygons:
+                    color: [0.950,0.950,0.950]
+
+        water-boundary-ocean:
+            filter: { boundary: true, kind: ocean, $zoom: { min: 1 } }
+            draw:
+                lines:
+                    visible: true
+                    order: global.feature_order
+                    color: [0.850,0.850,0.850]
+                    width: 1px
+                    join: round
+
+        water_boundaries-not-ocean:
+            filter:
+                all:
+                    - boundary: true
+                    - not: { kind: ocean }
+                    - $zoom: { min: 8 }
+            draw:
+                lines:
+                    visible: true
+                    order: global.feature_order
+                    color: [0.850,0.850,0.850]
+                    width: 1px
+                    join: round
+
+            swimming-pools-early:
+                filter: { kind: swimming_pool, $zoom: { max: 19 } }
+                draw:
+                    lines:
+                        visible: false
+            riverbank:
+                # river boundaries like the thames in london, la seine in paris
+                filter: { kind: riverbank }
+                draw:
+                    lines:
+                        visible: true
+                        color: [0.850,0.850,0.850]
+                        width: 1px
+
+    roads:
+        data: { source: nextzen, layer: roads }
+        draw:
+            lines:
+                width: 1px
+                order: global.feature_order
+
+        early:
+            filter: { $zoom: { max: 15 } }
+            draw:
+                lines:
+                    outline:
+                        order: global.feature_order
+
+        bridges-tunnels:
+            filter: { any: [is_bridge: true, is_tunnel: true] }
+            draw:
+                lines:
+                    # cap: butt
+                    outline:
+                        # except bridges and tunnels, their outlines should also self-sort
+                        order: global.feature_order
+
+        natural_earth_highways:
+            filter: { $zoom: { min: 5, max: 8 } }
+            draw:
+                lines:
+                    cap: round
+                    join: round
+                    color: [0.900,0.900,0.900]
+                    width: 1px
+            rail:
+                filter: { kind: rail }
+                draw:
+                    lines:
+                        color: red
+                        width: 1px
+
+
+
+
+        railway:
+            filter: { kind: rail, not: { kind_detail: [subway,light_rail,tram] } }
+            draw:
+                lines:
+                    # dash: [0.25, 1.0]
+                    # dash_background_color: [0.975,0.975,0.975]
+                    color: [0.000,0.000,0.000]
+                    width: [[10, 1px], [18, 2px], [20, 3m]]
+                    # let roads sort themselves past zoom 14
+                    order: global.feature_order
+                    # but give them all the same outline
+                    outline:
+                        order: 354
+            bridges-tunnels:
+                filter: { any: [is_bridge: true, is_tunnel: true] }
+                draw:
+                    lines:
+                        outline:
+                            # except bridges and tunnels, their outlines should also self-sort
+                            order: function() { return feature.sort_rank || 305; }
+            service:
+                filter: { service: true }
+                draw:
+                    lines:
+                        color: [0.000,0.000,0.000]
+                        width: [[14,0px],[15,0.5px],[18,2px]]
+
+        airport-lines:
+            filter: { kind: aeroway, kind_detail: [runway,taxiway] }
+            draw:
+                lines:
+                    order: global.feature_order
+                    color: [0.800,0.800,0.800]
+                    width: 2px
+            taxiway:
+                filter: { kind_detail: taxiway }
+                draw:
+                    lines:
+                        color: [1.000,1.000,1.000]
+                        width: [[12,0px],[15,3px],[20,8px]]
+                        outline:
+                            width: 0px
+            runway:
+                filter: { kind_detail: runway }
+                draw:
+                    lines:
+                        color: [1.000,1.000,1.000]
+                        width: [[9,0px],[11,1px],[13,5px],[15,30px],[20,100m]]
+                        outline:
+                            style: runway-glow
+                            color: [0.200,0.200,0.200]
+                            width: [[9,2px],[11,3px],[12,2px],[20,12px]]
+                runway-detail:
+                    filter: { $zoom: { min: 12 } }
+                    draw:
+                        runway-dots:
+                            color: [0.000,0.000,0.000]
+                            width: [[12,2px],[15,8px],[20,24px]]
+
+    transit:
+        data: { source: nextzen, layer: transit }
+        subway-light-rail:
+            filter: { not: { kind: [platform] }, $zoom: { min: 14 } }
+            draw:
+                lines:
+                    style: dashed-lines
+                    order: function() { return feature.sort_rank || 275; }
+            railway:
+                filter: { kind: [railway,train] }
+                draw:
+                    lines:
+                        color: [0.000,0.000,0.000]
+                        width: [[14, 0.5px], [16, 1px], [18, 1px]]
+            subway:
+                filter: { kind: subway }
+                draw:
+                    lines:
+                        color: [0.000,0.000,0.000]
+                        width: [[14, 0.5px], [16, 1px], [18, 1px]]
+            light_rail:
+                filter: { kind: [light_rail,tram], $zoom: { min: 15 } }
+                draw:
+                    lines:
+                        order: 415
+                        color: [0.000,0.000,0.000]
+                        width: [[14, 0px], [16, 1px]]
+
+    buildings:
+        data: { source: nextzen, layer: buildings }
+        filter:
+            not: { location: underground }
+        draw:
+            polygons:
+                visible: false
+                order: 329
+                color: [0.200,0.200,0.200]
+            lines:
+                visible: false
+                order: 329
+
+        footprints:
+            draw:
+                polygons:
+                    visible: true
+                    style: building-grid
+                lines:
+                    visible: true
+                    color: [0.650,0.650,0.650]
+                    width: [[12,0.5px], [14,2px]]
+
+        train-station:
+            filter: { kind_detail: train_station }
+            draw:
+                polygons:
+                    visible: true
+                    style: station-grid
+                lines:
+                    visible: true
+                    color: [0.000,0.000,0.000]
+                    width: 1px
+
+        in_airport:
+            filter: { landuse_kind: aerodrome }
+            draw:
+                polygons:
+                    visible: true
+                    style: station-grid
+                lines:
+                    visible: true
+                    color: [0.000,0.000,0.000]
+                    width: 1px
+
+
+styles:
+    runway-glow:
+        base: lines
+        mix: [lines-glow]
+        shaders:
+            defines:
+                GLOW_WIDTH: 0.80
+                GLOW_BRIGHTNESS: .5
+
+    runway-dots:
+        base: lines
+        mix: [lines-dots-glow]
+        animated: true
+        shaders:
+            defines:
+                DOTS_ANIMATE: color.a *=abs(sin(v_texcoord.y+u_time))*1.0
+            blocks:
+                filter: |
+                    #ifdef DOTS_ANIMATE
+                    DOTS_ANIMATE;
+                    #endif
+
+    terrain:
+        base: polygons
+        lighting: false
+        raster: normal
+        shaders:
+            uniforms:
+                u_envmap: images/refill-spheremap-light.jpg
+                u_contrast: 1.
+                u_zoom_scale: 3.5
+                u_brightness_base: 0.95
+                u_brightness_scaler: 0.75
+            blocks:
+                global: |
+                    // Simplified view-independent environment map
+                    vec4 applyEnvmap (in sampler2D _tex, in vec3 _normal, in float scale) {
+                        _normal.z *= scale;
+                        return texture2D(_tex, .5*(normalize(_normal).xy + 1.));
+                    }
+                color: |
+                    // turn terrain exaggeration up/down
+                    // fade out spheremap normals with a function
+                    float scale1 = 20./(u_map_position.z + 1.0) + 1.5;
+                    float m = u_zoom_scale * (u_map_position.z + 0.4) * exp(u_map_position.z * -.29);
+                    m = clamp(m, 0., 1.5);
+                    color = applyEnvmap(u_envmap, normal, 1./scale1);
+
+                    // apply contrast and brightness
+                    //float contrast = m;
+                    //color.rgb = ((color.rgb - 0.5) * max(contrast, 0.)) + 0.5;
+                    //float brightness = u_brightness_base - m * u_brightness_scaler;
+                    //color.rgb += brightness;
+
+                    // apply layer color
+                    color *= v_color;
+
+    dashed-lines:
+        base: lines
+        dash: [6,3]
+
+    space-constant:
+        shaders:
+            blocks:
+                global: |
+                    // Get the constant coordinates (glitches on zooms)
+                    // ================================
+                    vec2 getConstantCoords () {
+                        #ifdef TANGRAM_FRAGMENT_SHADER
+                        const float pixel_scale = 695.;
+                        float meter_pixels = u_meters_per_pixel / u_device_pixel_ratio;
+                        vec2 st = gl_FragCoord.xy/pixel_scale;
+                        const float dot_wrap = 1000.;
+                        st += mod(u_map_position.xy / meter_pixels, dot_wrap)/pixel_scale;
+                        return st;
+                        #else
+                        return vec2(0.0,0.0);
+                        #endif
+                    }
+
+    tools-tilecoords:
+        shaders:
+            blocks:
+                global: |
+                    // Varying to be added to both vertex and fragment shaders
+                    varying vec2 v_pos;
+                    #ifdef TANGRAM_FRAGMENT_SHADER
+                    vec2 TileCoords() {
+                        return fract(v_pos);
+                    }
+                    #endif
+                position: |
+                    v_pos = modelPosition().xy;
+    tools-grid:
+        mix: tools-tilecoords
+        shaders:
+            blocks:
+                global: |
+                    #ifdef TANGRAM_FRAGMENT_SHADER
+                    bool grid(vec2 st, float res, float press) {
+                        vec2 grid = fract(st * res);
+                        return (grid.x < res * press) || (grid.y < res * press);
+                    }
+                    float TileGrid(float res) {
+                        vec2 st = TileCoords() * 100. * res;
+                        float pct = 0.0;
+                        float press = 0.3 + (1.0 - fract(u_map_position.z)) * 0.1;
+                        if (grid(st, 0.1, press)) { pct += 0.5; }
+                        return pct;
+                    }
+                    float TileGrid() {
+                        return mix(TileGrid(1.), TileGrid(2.), fract(u_map_position.z));
+                    }
+                    #endif
+    tools-grid2:
+        mix: tools-tilecoords
+        shaders:
+            blocks:
+                global: |
+                    #ifdef TANGRAM_FRAGMENT_SHADER
+                    bool grid(vec2 st, float res, float press) {
+                        vec2 grid = fract(st * res);
+                        return (grid.x < res * press) || (grid.y < res * press);
+                    }
+                    float TileGrid(float res) {
+                        vec2 st = TileCoords() * 200. * res;
+                        float pct = 0.0;
+                        float press = 0.6 + (1.0 - fract(u_map_position.z)) * 0.1;
+                        if (grid(st, 0.1, press)) { pct += 0.5; }
+                        return pct;
+                    }
+                    float TileGrid() {
+                        return mix(TileGrid(1.), TileGrid(2.), fract(u_map_position.z));
+                    }
+                    #endif
+
+    tools-grid3:
+        mix: tools-tilecoords
+        shaders:
+            blocks:
+                global: |
+                    #ifdef TANGRAM_FRAGMENT_SHADER
+                    bool grid(vec2 st, float res, float press) {
+                        vec2 grid = fract(st * res);
+                        return (grid.x < res * press) || (grid.y < res * press);
+                    }
+                    float TileGrid(float res) {
+                        vec2 st = TileCoords() * 400. * res;
+                        float pct = 0.0;
+                        float press = 0.9 + (1.0 - fract(u_map_position.z)) * 0.1;
+                        if (grid(st, 0.1, press)) { pct += 0.5; }
+                        return pct;
+                    }
+                    float TileGrid() {
+                        return mix(TileGrid(1.), TileGrid(2.), fract(u_map_position.z));
+                    }
+                    #endif
+
+    station-grid:
+        base: polygons
+        mix: tools-grid3
+        shaders:
+            blocks:
+                filter: |
+                    color.rgb = vec3(1.000,1.000,1.000);
+                    color.rgb = mix(color.rgb, vec3(0.000,0.000,0.000), TileGrid());
+
+    building-grid:
+        base: polygons
+        mix: tools-grid2
+        shaders:
+            blocks:
+                filter: |
+                    color.rgb = vec3(1.000,1.000,1.000);
+                    color.rgb = mix(color.rgb, vec3(0.650,0.650,0.650), TileGrid());
+
+    lines-glow:
+        doc:
+            author: 
+                name: Patricio Gonzalez Vivo
+                twitter: patriciogv
+            version: 0.0.1
+            tangram-version: 0.0.7
+            licence: MIT
+            description: |  
+                Add an exciting glow effect to your
+        ui:
+            shaders:
+                defines:
+                    GLOW_WIDTH:
+                        type: number
+                        label: Solid width
+                        range: 
+                            min: 0.
+                            max: 1.
+                            step: 0.01
+                    GLOW_BRIGHTNESS:
+                        type: number
+                        label: Glow Brightness
+                        range: 
+                            min: 0.
+                            max: 1.
+                            step: 0.01
+        base: lines
+        mix: [block, functions-aastep]
+        texcoords: true
+        blend: add
+        shaders:
+            defines:
+                GLOW_WIDTH: 0.4
+                GLOW_BRIGHTNESS: .25
+            blocks:
+                color: |
+                    vec4 glow_tmp_color = color;
+                    color = glow_tmp_color*(aastep(GLOW_WIDTH,1.-v_texcoord.x)*aastep(GLOW_WIDTH,v_texcoord.x));
+                    color += glow_tmp_color*(sin(v_texcoord.x*PI)*GLOW_BRIGHTNESS);
+
+    lines-dots-glow:
+        base: lines
+        doc:
+            author: 
+                name: Patricio Gonzalez Vivo
+                twitter: patriciogv
+            version: 0.0.1
+            tangram-version: 0.0.7
+            licence: MIT
+            description: |
+                Apply a dot pattern to a line with some glow
+        ui:
+            shaders:
+                defines:
+                    DOTS_SIZE:
+                        type: number
+                        label: Size
+                        range: 
+                            min: 0.
+                            max: 1.
+                            step: 0.01
+                    DOTS_GLOW:
+                        type: number
+                        label: Glow amount
+                        range: 
+                            min: 0.
+                            max: 1.
+                            step: 0.01
+                    DOTS_SCALE:
+                        type: number
+                        label: Scale
+                        range: 
+                            min: 0.
+                            max: 2.
+                            step: 0.1
+        texcoords: true
+        blend: overlay
+        animated: true
+        shaders:
+            defines:
+                DOTS_SCALE: 2.
+                DOTS_SIZE: 0.15
+                DOTS_GLOW: .5
+            blocks:
+                color: |
+                    vec2 st = (fract(v_texcoord.xy)-.5)*DOTS_SCALE;
+                    float df = dot(st,st);
+                    color.a = 1.-step(DOTS_SIZE, df);
+                    color.a += smoothstep(1.,0.,df)*(DOTS_GLOW);
+
+    block:
+        shaders:
+            defines:
+                ADD: '+'
+                SUBTRACT: '-'
+                MULTIPLY: '*'
+
+                PI: 3.1415926535897932384626433832795
+                TWO_PI: 6.2831853071795864769252867665590
+                HALF_PI: 1.5707963267948966192313216916398
+                QUATER_PI: .785398163
+
+                EPSILON: 0.0000001
+
+                deg2rad(d): (((d)*3.1415926535897932384626433832795)/180.0)
+                rad2deg(d): (((d)*180.0)/3.1415926535897932384626433832795)
+
+    functions-aastep:
+        doc:
+            author: 
+                name: Matt DesLauriers
+                twitter: mattdesl
+            version: 0.0.1
+            tangram-version: 0.0.7
+            licence: MIT
+            description: |
+                AnitAliased ```step()``` function implemented by [Matt DesLauriers](https://twitter.com/mattdesl) in this module <https://github.com/stackgl/glsl-aastep>
+        shaders:
+            extensions: OES_standard_derivatives
+            blocks:
+                global: |
+                    // AntiAliased Step function
+                    //=============================
+                    float aastep(float threshold, float value) {
+                        #ifdef TANGRAM_FRAGMENT_SHADER
+                            #ifdef TANGRAM_EXTENSION_OES_standard_derivatives
+                                float afwidth = length(vec2(dFdx(value), dFdy(value))) * 0.70710678118654757;
+                                return smoothstep(threshold-afwidth, threshold+afwidth, value);
+                            #else
+                                return step(threshold, value);
+                            #endif  
+                        #else
+                            return step(threshold, value);
+                        #endif
+                    }
+
+
