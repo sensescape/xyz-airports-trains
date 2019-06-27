@@ -225,7 +225,7 @@ layers:
     transit:
         data: { source: nextzen, layer: transit }
         subway-light-rail:
-            filter: { not: { kind: [platform] }, $zoom: { min: 14 } }
+            filter: { not: { kind: platform } }
             draw:
                 lines:
                     style: dashed-lines
